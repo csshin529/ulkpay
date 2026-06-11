@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>결제 실패 · ULK·PAY</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #0C0A07; min-height: 100vh; font-family: 'Pretendard', -apple-system, system-ui, sans-serif; color: #EFE7DA; }
+  </style>
+</head>
+<body>
+  <div style="display:flex;justify-content:center;">
+    <div style="width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 20px;box-sizing:border-box;">
+      <div style="font-size:13px;font-weight:700;letter-spacing:0.18em;color:#B8955A;margin-bottom:40px;">ULK · PAY</div>
+      <div style="font-size:36px;margin-bottom:20px;">🙏</div>
+      <h2 style="font-size:22px;font-weight:700;color:#EFE7DA;margin-bottom:12px;text-align:center;">결제가 취소되었습니다</h2>
+      <p id="reason" style="font-size:14px;color:#8A7A66;text-align:center;line-height:1.8;margin-bottom:40px;">
+        결제창을 닫으셨거나 오류가 발생했습니다.<br>다시 시도하시면 언제든 응원을 보낼 수 있습니다.
+      </p>
+      <a href="/" style="display:block;width:100%;padding:19px;background:#C97D3A;color:#0C0A07;border-radius:14px;font-size:17px;font-weight:700;font-family:'Pretendard',sans-serif;text-align:center;text-decoration:none;">다시 응원하기</a>
+    </div>
+  </div>
+  <script>
+    const msg = new URLSearchParams(window.location.search).get("message");
+    if (msg) document.getElementById("reason").innerHTML = decodeURIComponent(msg);
+  </script>
+</body>
+</html>

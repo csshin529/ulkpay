@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>응원 완료 · ULK·PAY</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #0C0A07; min-height: 100vh; font-family: 'Pretendard', -apple-system, system-ui, sans-serif; color: #EFE7DA; }
+  </style>
+</head>
+<body>
+  <div id="root" style="display:flex;justify-content:center;">
+    <div id="loading" style="width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 20px;">
+      <div style="font-size:13px;color:#B8955A;letter-spacing:0.18em;font-weight:700;margin-bottom:32px;">ULK · PAY</div>
+      <p style="color:#8A7A66;font-size:15px;">결제를 확인하는 중입니다...</p>
+    </div>
+  </div>
+
+  <script>
+    const C    = { bg:"#0C0A07", card:"#1E1810", amber:"#C97D3A", amberL:"#DF9A58", gold:"#B8955A", text:"#EFE7DA", muted:"#8A7A66", hint:"#574D41", border:"#2A2018", borderL:"#38281A" };
+    const FONT = "'Pretendard',-apple-system,system-ui,sans-serif";
+    const fmt  = (n) => Number(n||0).toLocaleString("ko-KR");
+
+    function showDone(order, session) {
+      document.getElementById("root").innerHTML = `
+        <div style="width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;padding:0 20px 56px;box-sizing:border-box;position:relative;">
+          <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:360px;height:200px;background:radial-gradient(ellipse 60% 50% at 50% 0%,${C.amber}16 0%,transparent 70%);pointer-events:none;"></div>
+          <div style="position:relative;z-index:1;display:flex;flex-direction:column;flex:1;">
+            <div style="font-family:${FONT};font-size:13px;font-weight:700;letter-spacing:0.18em;color:${C.gold};text-align:center;padding:28px 0 0;">ULK · PAY</div>
+            <div style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100vh - 80px);padding-top:20px;">
+              <div style="text-align:center;font-size:12px;color:${C.gold};letter-spacing:0.22em;margin-bottom:24px;">✦ ✦ ✦</div>
+              <h1 style="font-size:26px;font-weight:700;line-height:1.35;letter-spacing:-0.03em;color:${C.text};text-align:center;margin:0 0 16px;">응원이<br>기록되었습니다</h1>
+              <p style="font-size:15px;font-weight:400;line-height:1.9;color:${C.muted};text-align:center;margin:0 0 32px;">
+                소중한 응원을 보내주셔서 감사합니다.<br>공연팀에게 전달됩니다.
+              </p>
+              <div style="background:${C.card};border:1px solid ${C.borderL};border-radius:16px;padding:24px;">
+                <div style="padding-bottom:18px;margin-bottom:${session.message ? '18px' : '0'};border-bottom:${session.message ? `1px solid ${C.border}` : 'none'};">
+                  <div style="font-size:11px;color:${C.hint};letter-spacing:0.1em;margin-bottom:6px;">선택한 응원</div>
+                  <div style="font-size:13px;color:${C.muted};margin-bottom:4px;">${session.label || ""}</div>
+                  <div style="font-size:28px;color:${C.amberL};font-weight:700;letter-spacing:-0.03em;">${fmt(order.amount)}원</div>
+                </div>
+                ${session.message ? `
+                <div>
+                  <div style="font-size:11px;color:${C.hint};letter-spacing:0.1em;margin-bottom:6px;">응원 메시지</div>
+                  <div style="font-size:14px;color:${C.text};line-height:1.75;font-weight:400;">"${session.message}"</div>
+                </div>` : ""}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function showError(msg) {
+      document.getElementById("root").innerHTML = `
+        <div style="width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 20px;box-sizing:border-box;">
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.18em;color:${C.gold};margin-bottom:40px;">ULK · PAY</div>
+          <div style="font-size:32px;margin-bottom:20px;">⚠️</div>
+          <h2 style="font-size:20px;font-weight:700;color:${C.text};margin-bottom:12px;text-align:center;">결제 승인 실패</h2>
+          <p style="font-size:14px;color:${C.muted};text-align:center;line-height:1.8;margin-bottom:32px;">${msg}</p>
+          <a href="/" style="display:block;width:100%;padding:18px;background:${C.amber};color:#0C0A07;border:none;border-radius:14px;font-size:16px;font-weight:700;font-family:${FONT};text-align:center;text-decoration:none;">다시 시도하기</a>
+        </div>`;
+    }
+
+    async function init() {
+      const params     = new URLSearchParams(window.location.search);
+      const paymentKey = params.get("paymentKey");
+      const orderId    = params.get("orderId");
+      const amount     = params.get("amount");
+
+      let session = {};
+      try { session = JSON.parse(sessionStorage.getItem("ulk-session") || "{}"); } catch {}
+
+      if (!paymentKey || !orderId || !amount) {
+        showError("결제 정보를 찾을 수 없습니다.<br>처음부터 다시 시도해주세요.");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/confirm-payment", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentKey, orderId, amount: Number(amount),
+            message:         session.message         || "",
+            label:           session.label           || "",
+            choco:           session.choco           || null,
+            performanceId:   session.performanceId   || "",
+            performanceName: session.performanceName || "",
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          sessionStorage.removeItem("ulk-session");
+          showDone(data.order, session);
+        } else {
+          showError(data.message || "결제 승인에 실패했습니다.");
+        }
+      } catch {
+        showError("서버 연결에 실패했습니다.<br>잠시 후 다시 시도해주세요.");
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
