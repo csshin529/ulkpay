@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>울컥페이 ULK·PAY</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <script src="https://js.tosspayments.com/v1/payment"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #0C0A07; min-height: 100vh; }
+    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; }
+    ::placeholder { color: #574D41; }
+    textarea, input { -webkit-appearance: none; }
+    button { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const FONT = "'Pretendard',-apple-system,BlinkMacSystemFont,system-ui,sans-serif";
+
+    const PRESETS = [
+      { label: "반 박스", choco: 50,  krw: 5000  },
+      { label: "1박스",   choco: 100, krw: 10000, recommended: true },
+      { label: "2박스",   choco: 200, krw: 20000 },
+      { label: "1상자",   choco: 500, krw: 50000 },
+    ];
+
+    const QUICK = [
+      "오늘 공연 정말 좋았습니다",
+      "마지막 장면이 오래 남아요",
+    ];
+
+    const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
+
+    const C = {
+      bg: "#0C0A07", card: "#1E1810",
+      amber: "#C97D3A", amberL: "#DF9A58", amberD: "#A06530", amberF: "#C97D3A13",
+      gold: "#B8955A", text: "#EFE7DA", muted: "#8A7A66", hint: "#574D41",
+      border: "#2A2018", borderL: "#38281A", red: "#C05050",
+    };
+
+    const makeOrderId = () =>
+      "ulk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    function UlkPay() {
+      const [screen,      setScreen]      = useState("main");
+      const [config,      setConfig]      = useState(null);   // { mode, clientKey, performanceId, performanceName }
+      const [selected,    setSelected]    = useState(PRESETS[1]);
+      const [isCustom,    setIsCustom]    = useState(false);
+      const [customChoco, setCustomChoco] = useState("");
+      const [message,     setMessage]     = useState("");
+      const [paying,      setPaying]      = useState(false);
+      const [errorMsg,    setErrorMsg]    = useState("");
+      const [doneOrder,   setDoneOrder]   = useState(null);   // manual mode 완료 데이터
+      const [taps,        setTaps]        = useState(0);
+      const tapTimer  = useRef(null);
+      const customRef = useRef(null);
+      const [fade,        setFade]        = useState(true);
+
+      const customKrw   = parseInt(customChoco || "0", 10) * 100;
+      const activeChoco = isCustom ? parseInt(customChoco || "0", 10) : selected.choco;
+      const activeKrw   = isCustom ? customKrw : selected.krw;
+      const activeLabel = isCustom
+        ? `직접입력 ${customChoco}초콜릿`
+        : `${selected.label} · ${selected.choco}초콜릿`;
+      const canPay = isCustom ? parseInt(customChoco || "0", 10) * 100 >= 1000 : true;
+      const mode   = config?.mode || "manual";
+
+      useEffect(() => {
+        fetch("/api/config")
+          .then(r => r.json())
+          .then(d => setConfig(d))
+          .catch(() => setConfig({ mode: "manual", performanceName: "공연", performanceId: "pilot" }));
+      }, []);
+
+      const go = (to) => {
+        setFade(false);
+        setTimeout(() => { setScreen(to); setFade(true); window.scrollTo(0, 0); }, 200);
+      };
+
+      const handleLogoTap = () => {
+        clearTimeout(tapTimer.current);
+        const n = taps + 1; setTaps(n);
+        tapTimer.current = setTimeout(() => setTaps(0), 2000);
+        if (n >= 5) { setTaps(0); go("admin"); }
+      };
+
+      const handleSelectPreset = (p) => { setSelected(p); setIsCustom(false); setErrorMsg(""); };
+      const handleSelectCustom = () => {
+        setIsCustom(true);
+        setTimeout(() => customRef.current?.focus(), 50);
+      };
+
+      // ── 결제 / 응원의사 제출 ──────────────────────────────────────────────
+      const handlePay = async () => {
+        if (!canPay || paying) return;
+        setErrorMsg("");
+        setPaying(true);
+
+        if (mode === "manual") {
+          // ── manual: 서버에 의사 저장 후 완료 화면 ──
+          try {
+            const res = await fetch("/api/intent", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                amount:          activeKrw,
+                choco:           activeChoco,
+                label:           activeLabel,
+                message,
+                performanceId:   config?.performanceId,
+                performanceName: config?.performanceName,
+              }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              setDoneOrder({ amount: activeKrw, label: activeLabel, message, mode: "manual" });
+              go("done");
+            } else {
+              setErrorMsg(data.message || "저장 중 오류가 발생했습니다.");
+            }
+          } catch {
+            setErrorMsg("서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");
+          } finally {
+            setPaying(false);
+          }
+
+        } else if (mode === "weroute") {
+          // ── weroute: 위루트 Form POST 결제창 호출 ──
+          if (!config?.mid) {
+            setErrorMsg("결제 설정을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+            setPaying(false);
+            return;
+          }
+          // temp 필드에 메타데이터 담아 Webhook에서 복원
+          const metaJson = JSON.stringify({
+            label:           activeLabel,
+            choco:           activeChoco,
+            message,
+            performanceId:   config?.performanceId,
+            performanceName: config?.performanceName,
+          });
+          const ordNum = makeOrderId();
+          const origin = window.location.origin;
+          const form   = document.createElement("form");
+          form.method  = "POST";
+          form.action  = "https://api.weroutefincorp.com/v2/pay/auth";
+          form.charset = "UTF-8";
+          const fields = {
+            pay_key:       "18580UivDGyqtvo9ALDK01MvdjEsr2hVol7VBFr9z5HVqgsTQfHnTdJMhRzHeOH3",
+            mid:           config.mid,
+            tid:           "",
+            amount:        String(activeKrw),
+            ord_num:       ordNum,
+            item_name:     `울컥페이 응원 · ${activeLabel}`,
+            buyer_name:    "응원자",
+            buyer_phone:   "01000000000",
+            is_send_email: "0",
+            installment:   "00",
+            user_agent:    "WM",
+            return_url:    `${origin}/api/return/weroute`,
+            temp:          metaJson,
+          };
+          Object.entries(fields).forEach(([k, v]) => {
+            const inp = document.createElement("input");
+            inp.type  = "hidden"; inp.name = k; inp.value = v;
+            form.appendChild(inp);
+          });
+          document.body.appendChild(form);
+          form.submit();
+
+        } else {
+          // ── toss: 토스페이먼츠 결제창 호출 ──
+          if (!config?.clientKey) {
+            setErrorMsg("결제 설정을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+            setPaying(false);
+            return;
+          }
+          sessionStorage.setItem("ulk-session", JSON.stringify({
+            label:           activeLabel,
+            choco:           activeChoco,
+            krw:             activeKrw,
+            message,
+            performanceId:   config?.performanceId,
+            performanceName: config?.performanceName,
+          }));
+          try {
+            const tossPayments = TossPayments(config.clientKey);
+            await tossPayments.requestPayment("카드", {
+              amount:       activeKrw,
+              orderId:      makeOrderId(),
+              orderName:    `울컥페이 응원 · ${activeLabel}`,
+              customerName: "응원자",
+              successUrl:   `${window.location.origin}/success`,
+              failUrl:      `${window.location.origin}/fail`,
+            });
+          } catch (err) {
+            if (err.code !== "USER_CANCEL") {
+              setErrorMsg("결제 중 오류가 발생했습니다: " + (err.message || ""));
+            }
+          } finally {
+            setPaying(false);
+          }
+        }
+      };
+
+      // ── 스타일 ────────────────────────────────────────────────────────────
+      const W        = { minHeight: "100vh", backgroundColor: C.bg, display: "flex", justifyContent: "center", fontFamily: FONT, color: C.text };
+      const P        = { width: "100%", maxWidth: "420px", minHeight: "100vh", display: "flex", flexDirection: "column", padding: "0 20px 56px", boxSizing: "border-box", opacity: fade ? 1 : 0, transition: "opacity 0.2s ease", position: "relative" };
+      const Glow     = { position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: "360px", height: "200px", background: `radial-gradient(ellipse 60% 50% at 50% 0%, ${C.amber}16 0%, transparent 70%)`, pointerEvents: "none" };
+      const Z        = { position: "relative", zIndex: 1 };
+      const brandSt  = { fontFamily: FONT, fontSize: "13px", fontWeight: 700, letterSpacing: "0.18em", color: C.gold, textAlign: "center", padding: "28px 0 0", cursor: "pointer", userSelect: "none" };
+      const H1       = { fontSize: "26px", fontWeight: 700, lineHeight: 1.35, letterSpacing: "-0.03em", color: C.text, textAlign: "center", margin: "0 0 12px" };
+      const SecLabel = { fontSize: "11px", fontWeight: 600, color: C.hint, letterSpacing: "0.1em", marginBottom: "10px" };
+      const Btn      = { width: "100%", padding: "19px 24px", backgroundColor: C.amber, color: "#0C0A07", border: "none", borderRadius: "14px", fontSize: "17px", fontWeight: 700, fontFamily: FONT, cursor: "pointer", letterSpacing: "-0.01em", opacity: (canPay && !paying) ? 1 : 0.4, transition: "opacity 0.2s" };
+      const Divider  = { height: "1px", backgroundColor: C.border, margin: "24px 0" };
+
+      const btnLabel = () => {
+        if (paying) return "처리 중...";
+        if (!canPay) return "금액을 선택해주세요";
+        if (mode === "manual") return `${fmt(activeKrw)}원 응원 의사 남기기`;
+        return `${fmt(activeKrw)}원 결제하고 응원 보내기`;
+      };
+
+      // ── Screen: Admin ──────────────────────────────────────────────────────
+      if (screen === "admin") return <AdminPanel config={config} onBack={() => go("main")} />;
+
+      // ── Screen: Done (manual mode) ─────────────────────────────────────────
+      if (screen === "done") return (
+        <div style={W}><div style={P}><div style={Glow} /><div style={Z}>
+          <div style={brandSt} onClick={handleLogoTap}>ULK · PAY</div>
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "calc(100vh - 80px)", paddingTop: "20px" }}>
+            <div style={{ textAlign: "center", fontSize: "12px", color: C.gold, letterSpacing: "0.22em", marginBottom: "24px" }}>✦ ✦ ✦</div>
+            <h1 style={{ ...H1, marginBottom: "16px" }}>응원 의사가<br />기록되었습니다</h1>
+            <p style={{ fontSize: "15px", fontWeight: 400, lineHeight: 1.9, color: C.muted, textAlign: "center", margin: "0 0 32px" }}>
+              선택하신 응원금액과 메시지가 기록되었습니다.
+              {doneOrder?.mode === "manual" && (
+                <><br /><span style={{ color: C.text, fontWeight: 600 }}>본 파일럿은 결제의사 확인을<br />위한 시범운영입니다.</span></>
+              )}
+            </p>
+            <div style={{ backgroundColor: C.card, border: `1px solid ${C.borderL}`, borderRadius: "16px", padding: "24px" }}>
+              <div style={{ paddingBottom: "18px", marginBottom: doneOrder?.message ? "18px" : 0, borderBottom: doneOrder?.message ? `1px solid ${C.border}` : "none" }}>
+                <div style={{ fontSize: "11px", color: C.hint, letterSpacing: "0.1em", marginBottom: "6px" }}>선택한 응원</div>
+                <div style={{ fontSize: "13px", color: C.muted, marginBottom: "4px" }}>{doneOrder?.label}</div>
+                <div style={{ fontSize: "28px", color: C.amberL, fontWeight: 700, letterSpacing: "-0.03em" }}>{fmt(doneOrder?.amount)}원</div>
+              </div>
+              {doneOrder?.message && (
+                <div>
+                  <div style={{ fontSize: "11px", color: C.hint, letterSpacing: "0.1em", marginBottom: "6px" }}>응원 메시지</div>
+                  <div style={{ fontSize: "14px", color: C.text, lineHeight: 1.75, fontWeight: 400 }}>"{doneOrder.message}"</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div></div></div>
+      );
+
+      // ── Screen: Main ───────────────────────────────────────────────────────
+      return (
+        <div style={W}><div style={P}><div style={Glow} /><div style={Z}>
+          <div style={brandSt} onClick={handleLogoTap}>ULK · PAY</div>
+
+          {/* 헤더 */}
+          <div style={{ paddingTop: "28px", marginBottom: "20px", textAlign: "center" }}>
+            <div style={{ fontSize: "40px", marginBottom: "16px", lineHeight: 1 }}>🍫</div>
+            <h1 style={H1}>공연 잘 보셨나요?</h1>
+            <p style={{ fontSize: "15px", fontWeight: 400, lineHeight: 1.85, color: C.muted, margin: "0 0 18px" }}>
+              오늘 공연에 울컥하셨다면,<br />공연팀에게 응원을 보내고 싶으시다면.
+            </p>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "9px 16px", backgroundColor: C.card, border: `1px solid ${C.borderL}`, borderRadius: "8px" }}>
+              <span style={{ fontSize: "13px" }}>🍫</span>
+              <span style={{ fontSize: "12px", color: C.gold, fontWeight: 500 }}>초콜릿은 공연팀 응원 단위 · 1초콜릿 = 100원</span>
+            </div>
+          </div>
+
+          {mode === "manual" && (
+            <div style={{ backgroundColor: "#1A1408", border: `1px solid ${C.amberD}`, borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", display: "flex", gap: "8px", alignItems: "flex-start" }}>
+              <span style={{ fontSize: "13px", flexShrink: 0 }}>ℹ️</span>
+              <span style={{ fontSize: "12px", color: C.muted, lineHeight: 1.7 }}>지금은 파일럿 시범운영 중입니다. 실제 결제는 진행되지 않으며, 응원 의사와 금액이 기록됩니다.</span>
+            </div>
+          )}
+
+          <div style={Divider} />
+
+          {/* 금액 선택 */}
+          <div style={SecLabel}>응원 금액 선택</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
+            {PRESETS.map((p) => {
+              const on = !isCustom && selected.krw === p.krw;
+              return (
+                <div key={p.krw} onClick={() => handleSelectPreset(p)}
+                  style={{ padding: "14px", border: `1.5px solid ${on ? C.amber : C.border}`, borderRadius: "12px", backgroundColor: on ? C.amberF : C.card, cursor: "pointer", transition: "all 0.15s", position: "relative" }}>
+                  {p.recommended && <div style={{ position: "absolute", top: "-1px", right: "-1px", backgroundColor: C.amber, color: "#0C0A07", fontSize: "9px", fontWeight: 700, padding: "2px 7px", borderRadius: "0 11px 0 6px" }}>추천</div>}
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: on ? C.amberL : C.text, marginBottom: "2px" }}>{p.label}</div>
+                  <div style={{ fontSize: "11px", color: C.muted }}>{p.choco}초콜릿</div>
+                  <div style={{ fontSize: "18px", fontWeight: 700, color: on ? C.amberL : C.text, marginTop: "8px", letterSpacing: "-0.02em" }}>{fmt(p.krw)}원</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 직접 입력 */}
+          <div onClick={!isCustom ? handleSelectCustom : undefined}
+            style={{ border: `1.5px solid ${isCustom ? C.amber : C.border}`, borderRadius: "12px", backgroundColor: isCustom ? C.amberF : C.card, overflow: "hidden", marginBottom: "6px", cursor: isCustom ? "default" : "pointer", transition: "all 0.15s" }}>
+            <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: isCustom ? C.amberL : C.text, marginBottom: "2px" }}>직접 입력</div>
+                <div style={{ fontSize: "11px", color: C.muted }}>초콜릿 수를 직접 써주세요 (최소 10개)</div>
+              </div>
+              {isCustom && customChoco
+                ? <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "18px", fontWeight: 700, color: C.amberL }}>{fmt(customKrw)}원</div>
+                    <div style={{ fontSize: "11px", color: C.muted, marginTop: "2px" }}>{customChoco}초콜릿</div>
+                  </div>
+                : <div style={{ fontSize: "12px", color: C.hint }}>→</div>}
+            </div>
+            {isCustom && (
+              <div style={{ borderTop: `1px solid ${C.borderL}`, padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px" }}>
+                <input ref={customRef} type="number" inputMode="numeric" placeholder="초콜릿 개수 입력"
+                  value={customChoco} onChange={(e) => setCustomChoco(e.target.value.replace(/\D/g, ""))}
+                  style={{ flex: 1, backgroundColor: C.bg, border: `1px solid ${C.borderL}`, borderRadius: "8px", color: C.text, fontSize: "16px", fontFamily: FONT, fontWeight: 500, padding: "10px 14px", outline: "none", width: "100%" }} />
+                <div style={{ fontSize: "13px", color: C.muted, flexShrink: 0 }}>개 = {customChoco ? fmt(customKrw) : "—"}원</div>
+              </div>
+            )}
+          </div>
+          <p style={{ fontSize: "11px", color: C.hint, marginBottom: "0" }}>응원금은 공연팀에게 응원 메시지와 함께 전달됩니다.</p>
+
+          <div style={Divider} />
+
+          {/* 선택 금액 요약 */}
+          <div style={{ backgroundColor: C.card, border: `1px solid ${C.borderL}`, borderRadius: "12px", padding: "14px 18px", marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: "11px", color: C.hint, marginBottom: "3px" }}>선택한 응원</div>
+              <div style={{ fontSize: "13px", color: C.muted }}>{activeLabel}</div>
+            </div>
+            <div style={{ fontSize: "22px", fontWeight: 700, color: canPay ? C.amberL : C.hint, letterSpacing: "-0.03em" }}>
+              {canPay ? `${fmt(activeKrw)}원` : "—"}
+            </div>
+          </div>
+
+          {/* 응원 메시지 */}
+          <div style={SecLabel}>응원 메시지 <span style={{ color: C.border, fontWeight: 400, letterSpacing: 0 }}>선택</span></div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "7px", marginBottom: "10px" }}>
+            {QUICK.map((m) => {
+              const on = message === m;
+              return (
+                <button key={m} onClick={() => setMessage(on ? "" : m)}
+                  style={{ backgroundColor: on ? C.amberF : C.card, border: `1px solid ${on ? C.amber : C.border}`, borderRadius: "20px", color: on ? C.amberL : C.muted, fontSize: "12px", fontFamily: FONT, fontWeight: 400, padding: "7px 13px", cursor: "pointer", transition: "all 0.15s" }}>
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="직접 입력하실 수도 있습니다."
+            style={{ width: "100%", height: "68px", backgroundColor: C.card, border: `1px solid ${C.borderL}`, borderRadius: "12px", color: C.text, fontSize: "14px", fontFamily: FONT, fontWeight: 400, lineHeight: 1.7, padding: "12px 15px", resize: "none", outline: "none", marginBottom: "4px" }} />
+          <p style={{ fontSize: "11px", color: C.hint, marginBottom: errorMsg ? "12px" : "28px" }}>메시지는 익명으로 전달됩니다.</p>
+
+          {errorMsg && (
+            <div style={{ backgroundColor: "#1A0A0A", border: `1px solid ${C.red}`, borderRadius: "10px", padding: "12px 14px", marginBottom: "16px" }}>
+              <p style={{ fontSize: "13px", color: "#E07070", lineHeight: 1.6 }}>{errorMsg}</p>
+            </div>
+          )}
+
+          <button style={Btn} onClick={handlePay} disabled={!canPay || paying}>{btnLabel()}</button>
+          <p style={{ fontSize: "11px", color: C.hint, textAlign: "center", marginTop: "12px" }}>응원금은 공연팀에게 응원 메시지와 함께 전달됩니다.</p>
+        </div></div></div>
+      );
+    }
+
+    // ── 관리자 패널 ────────────────────────────────────────────────────────────
+    function AdminPanel({ config, onBack }) {
+      const [adminKey, setAdminKey] = useState("");
+      const [authed,   setAuthed]   = useState(false);
+      const [stats,    setStats]    = useState(null);
+      const [orders,   setOrders]   = useState([]);
+      const [tab,      setTab]      = useState("stats");
+      const [error,    setError]    = useState("");
+      const [loading,  setLoading]  = useState(false);
+
+      const login = async () => {
+        if (!adminKey) return;
+        setLoading(true); setError("");
+        try {
+          const [sRes, oRes] = await Promise.all([
+            fetch("/api/admin/stats",  { headers: { "x-admin-key": adminKey } }),
+            fetch("/api/admin/orders", { headers: { "x-admin-key": adminKey } }),
+          ]);
+          if (!sRes.ok) { setError("인증 실패. 관리자 키를 확인해주세요."); return; }
+          const [sData, oData] = await Promise.all([sRes.json(), oRes.json()]);
+          setStats(sData);
+          setOrders(oData.orders || []);
+          setAuthed(true);
+        } catch { setError("서버 연결 실패"); }
+        finally { setLoading(false); }
+      };
+
+      const exportCSV = async () => {
+        try {
+          const res = await fetch("/api/admin/export.csv", { headers: { "x-admin-key": adminKey } });
+          const blob = await res.blob();
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "ulkpay-orders.csv"; a.click();
+        } catch { alert("CSV 다운로드 실패"); }
+      };
+
+      const tabStyle = (id) => ({
+        flex: 1, padding: "9px 4px", border: "none", borderRadius: "8px",
+        backgroundColor: tab === id ? C.amber : "transparent",
+        color: tab === id ? "#0C0A07" : C.muted,
+        fontFamily: FONT, fontSize: "12px", fontWeight: tab === id ? 700 : 400, cursor: "pointer",
+      });
+      const Btn2  = { width: "100%", padding: "15px", backgroundColor: C.amber, color: "#0C0A07", border: "none", borderRadius: "12px", fontSize: "15px", fontWeight: 700, fontFamily: FONT, cursor: "pointer" };
+      const Ghost = { ...Btn2, backgroundColor: "transparent", border: `1px solid ${C.border}`, color: C.muted, fontWeight: 400 };
+
+      return (
+        <div style={{ minHeight: "100vh", backgroundColor: C.bg, display: "flex", justifyContent: "center", fontFamily: FONT, color: C.text }}>
+          <div style={{ width: "100%", maxWidth: "420px", padding: "0 20px 48px", boxSizing: "border-box" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.18em", color: C.gold, textAlign: "center", padding: "28px 0 20px" }}>ULK · PAY / ADMIN</div>
+
+            {!authed ? (
+              <div>
+                <p style={{ fontSize: "14px", color: C.muted, marginBottom: "16px", textAlign: "center", lineHeight: 1.7 }}>
+                  관리자 키를 입력해주세요.<br />
+                  <span style={{ fontSize: "12px", color: C.hint }}>(현재 모드: {config?.mode?.toUpperCase() || "—"})</span>
+                </p>
+                <input type="password" value={adminKey} onChange={(e) => setAdminKey(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && login()}
+                  placeholder="관리자 키"
+                  style={{ width: "100%", backgroundColor: C.card, border: `1px solid ${C.borderL}`, borderRadius: "10px", color: C.text, fontSize: "15px", fontFamily: FONT, padding: "14px 16px", outline: "none", marginBottom: "10px" }} />
+                {error && <p style={{ fontSize: "12px", color: "#E07070", marginBottom: "10px" }}>{error}</p>}
+                <button style={{ ...Btn2, opacity: loading ? 0.6 : 1 }} onClick={login} disabled={loading}>{loading ? "확인 중..." : "확인"}</button>
+                <button style={{ ...Ghost, marginTop: "10px" }} onClick={onBack}>돌아가기</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: "flex", backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: "12px", padding: "4px", marginBottom: "20px" }}>
+                  {[["stats","통계"],["list","목록"]].map(([id,lb]) => (
+                    <button key={id} style={tabStyle(id)} onClick={() => setTab(id)}>{lb}</button>
+                  ))}
+                </div>
+
+                {tab === "stats" && stats && (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "14px" }}>
+                      {[
+                        ["결제의사 수",   `${(stats.intent||0)}건`],
+                        ["실결제 수",     `${(stats.paid||0)}건`],
+                        ["총 의사금액",   `${fmt(stats.totalIntent)}원`],
+                        ["총 결제금액",   `${fmt(stats.totalPaid)}원`],
+                        ["평균 의사금액", `${fmt(stats.avgIntent)}원`],
+                        ["평균 결제금액", `${fmt(stats.avgPaid)}원`],
+                      ].map(([l,v]) => (
+                        <div key={l} style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: "12px", padding: "14px" }}>
+                          <div style={{ fontSize: "10px", color: C.hint, letterSpacing: "0.06em", marginBottom: "6px" }}>{l}</div>
+                          <div style={{ fontSize: "18px", color: C.amberL, fontWeight: 700 }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={exportCSV} style={Btn2}>CSV 다운로드</button>
+                  </div>
+                )}
+
+                {tab === "list" && (
+                  <div>
+                    <div style={{ fontSize: "13px", color: C.muted, marginBottom: "12px" }}>총 {orders.length}건</div>
+                    {orders.length === 0 && <div style={{ color: C.hint, textAlign: "center", paddingTop: "40px" }}>데이터 없음</div>}
+                    {[...orders].reverse().map((o, i) => {
+                      const statusColor = o.status === "paid" ? "#5A9E72" : o.status === "failed" ? C.red : C.amberL;
+                      return (
+                        <div key={i} style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: "12px", padding: "14px 16px", marginBottom: "8px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ color: statusColor, fontSize: "15px", fontWeight: 700 }}>{fmt(o.amount)}원</span>
+                              <span style={{ fontSize: "10px", color: statusColor, border: `1px solid ${statusColor}`, borderRadius: "4px", padding: "1px 5px" }}>{o.status}</span>
+                            </div>
+                            <span style={{ color: C.hint, fontSize: "11px" }}>{new Date(o.createdAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <div style={{ fontSize: "12px", color: C.muted, marginBottom: o.message ? "5px" : 0 }}>{o.label} · {o.mode}</div>
+                          {o.message && <div style={{ fontSize: "13px", color: C.text, lineHeight: 1.6 }}>"{o.message}"</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button style={{ ...Ghost, marginTop: "16px" }} onClick={onBack}>돌아가기</button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<UlkPay />);
+  </script>
+</body>
+</html>
