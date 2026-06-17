@@ -151,9 +151,10 @@ function requireAdmin(req, res, next) {
 app.get("/api/config", (req, res) => {
   res.json({
     mode:            MODE,
-    clientKey:       process.env.TOSS_CLIENT_KEY || null,
-    performanceId:   process.env.PERFORMANCE_ID   || "pilot",
-    performanceName: process.env.PERFORMANCE_NAME || "공연",
+    clientKey:       process.env.TOSS_CLIENT_KEY  || null, // toss 모드용
+    mid:             process.env.WEROUTE_MID       || null, // weroute 모드용
+    performanceId:   process.env.PERFORMANCE_ID    || "pilot",
+    performanceName: process.env.PERFORMANCE_NAME  || "공연",
   });
 });
 
@@ -226,6 +227,63 @@ app.post("/api/confirm-payment", async (req, res) => {
       message: errData.message || "결제 승인 중 오류가 발생했습니다.",
     });
   }
+});
+
+// ─── API: 위루트 결제통지 Webhook (weroute mode) ──────────────────────────────
+// 위루트가 결제 완료 후 이 URL로 POST 전송
+// 성공 응답: HTTP 200 + body {}
+app.post("/api/webhook/weroute", express.urlencoded({ extended: true }), async (req, res) => {
+  const body = req.body;
+  console.log("📩 위루트 Webhook 수신:", JSON.stringify(body));
+
+  // signature 검증: sha256("sign_key=값&timestamp=값&mid=값")
+  const SIGN_KEY = process.env.WEROUTE_PAY_KEY;
+  if (SIGN_KEY && body.signature && body.timestamp && body.mid) {
+    const raw  = `sign_key=${SIGN_KEY}&timestamp=${body.timestamp}&mid=${body.mid}`;
+    const hash = crypto.createHash("sha256").update(raw, "utf8").digest("hex");
+    if (hash !== body.signature) {
+      console.warn("⚠️  signature 불일치 — 위조 요청 의심");
+      return res.status(200).json({ message: "signature 불일치" });
+    }
+  }
+
+  // 취소 건 무시
+  if (body.is_cancel === "1") {
+    console.log("ℹ️  취소 건 — 스킵");
+    return res.status(200).send("{}");
+  }
+
+  // temp 필드에 결제 시 담아 보낸 메타데이터 복원 (label, message, choco 등)
+  let meta = {};
+  try { meta = JSON.parse(body.temp || "{}"); } catch {}
+
+  try {
+    await saveOrder(makeOrder({
+      mode:            "weroute",
+      status:          "paid",
+      performanceId:   meta.performanceId   || process.env.PERFORMANCE_ID   || "pilot",
+      performanceName: meta.performanceName || process.env.PERFORMANCE_NAME || "공연",
+      amount:          parseInt(body.amount, 10),
+      choco:           meta.choco   || null,
+      label:           meta.label   || null,
+      message:         meta.message || "",
+      paymentKey:      body.trx_id  || null,
+      orderId:         body.ord_num || null,
+    }));
+    console.log("✅  위루트 결제 저장 완료:", body.ord_num);
+    return res.status(200).send("{}");
+  } catch (e) {
+    console.error("❌ Webhook 저장 실패:", e.message);
+    return res.status(500).json({ message: "저장 실패: " + e.message });
+  }
+});
+
+// ─── API: 위루트 Return URL (weroute mode) ────────────────────────────────────
+// 결제창에서 완료 버튼 클릭 시 도착 (미클릭 시 미도달 — DB 저장은 Webhook 담당)
+app.get("/api/return/weroute", (req, res) => {
+  console.log("🔁 위루트 Return URL 도착:", req.query);
+  const params = new URLSearchParams(req.query).toString();
+  res.redirect(`/success?${params}`);
 });
 
 // ─── 관리자 API ────────────────────────────────────────────────────────────────
