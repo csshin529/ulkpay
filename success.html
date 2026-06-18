@@ -64,15 +64,42 @@
     }
 
     async function init() {
-      const params     = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(window.location.search);
+
+      // ── 위루트 Return URL 방식 ──────────────────────────────────────────────
+      const resultCd = params.get("result_cd");
+      const ordNum   = params.get("ord_num");
+      const amount   = params.get("amount");
+
+      if (resultCd !== null) {
+        // 위루트 방식
+        if (resultCd === "0000") {
+          // temp 필드에서 메타데이터 복원
+          let meta = {};
+          try { meta = JSON.parse(decodeURIComponent(params.get("temp") || "{}")); } catch {}
+
+          showDone(
+            { amount: amount || 0 },
+            {
+              label:   meta.label   || params.get("item_name") || "",
+              message: meta.message || "",
+            }
+          );
+        } else {
+          showError("결제가 취소되었거나 실패했습니다.<br>처음부터 다시 시도해주세요.");
+        }
+        return;
+      }
+
+      // ── 토스 방식 (toss 모드용 유지) ────────────────────────────────────────
       const paymentKey = params.get("paymentKey");
       const orderId    = params.get("orderId");
-      const amount     = params.get("amount");
+      const tossAmount = params.get("amount");
 
       let session = {};
       try { session = JSON.parse(sessionStorage.getItem("ulk-session") || "{}"); } catch {}
 
-      if (!paymentKey || !orderId || !amount) {
+      if (!paymentKey || !orderId || !tossAmount) {
         showError("결제 정보를 찾을 수 없습니다.<br>처음부터 다시 시도해주세요.");
         return;
       }
@@ -82,7 +109,7 @@
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            paymentKey, orderId, amount: Number(amount),
+            paymentKey, orderId, amount: Number(tossAmount),
             message:         session.message         || "",
             label:           session.label           || "",
             choco:           session.choco           || null,
