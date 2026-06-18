@@ -286,7 +286,131 @@ app.get("/api/return/weroute", (req, res) => {
   res.redirect(`/success?${params}`);
 });
 
-// ─── 관리자 API ────────────────────────────────────────────────────────────────
+// ─── 이벤트 로그 저장소 ───────────────────────────────────────────────────────
+const EVENTS_FILE = path.join(DATA_DIR, "events.json");
+
+if (!USE_SUPABASE) {
+  try {
+    if (!fs.existsSync(EVENTS_FILE)) fs.writeFileSync(EVENTS_FILE, "[]", "utf-8");
+  } catch (e) {
+    console.warn("⚠️  events 파일 초기화 실패:", e.message);
+  }
+}
+
+function fileReadEvents() {
+  try { return JSON.parse(fs.readFileSync(EVENTS_FILE, "utf-8")); } catch { return []; }
+}
+
+function fileAppendEvent(ev) {
+  const all = fileReadEvents();
+  all.push(ev);
+  fs.writeFileSync(EVENTS_FILE, JSON.stringify(all, null, 2), "utf-8");
+}
+
+async function saveEvent(ev) {
+  if (USE_SUPABASE) {
+    try {
+      await axios.post(
+        `${SB_URL}/rest/v1/events`,
+        { id: ev.id, data: ev },
+        { headers: sbHeaders() }
+      );
+    } catch (e) { console.warn("⚠️  Supabase 이벤트 저장 실패:", e.message); }
+  } else {
+    fileAppendEvent(ev);
+  }
+}
+
+async function readEvents() {
+  if (USE_SUPABASE) {
+    try {
+      const res = await axios.get(
+        `${SB_URL}/rest/v1/events?select=data&order=created_at.asc`,
+        { headers: sbHeaders() }
+      );
+      return res.data.map(r => r.data);
+    } catch { return []; }
+  }
+  return fileReadEvents();
+}
+
+// ─── API: 이벤트 수집 ─────────────────────────────────────────────────────────
+app.post("/api/event", async (req, res) => {
+  const { event, sessionId, data } = req.body;
+  if (!event) return res.status(400).json({ ok: false });
+
+  const ev = {
+    id:        crypto.randomUUID(),
+    event,                          // page_enter | amount_select | custom_amount | message_select | message_type | pay_click | pay_success | pay_fail
+    sessionId: sessionId || null,
+    data:      data      || {},
+    ua:        req.headers["user-agent"] || null,
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await saveEvent(ev);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("❌ 이벤트 저장 실패:", e.message);
+    return res.status(500).json({ ok: false });
+  }
+});
+
+// ─── API: 퍼널 통계 (관리자) ──────────────────────────────────────────────────
+app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
+  try {
+    const events = await readEvents();
+
+    const STEPS = [
+      { key: "page_enter",     label: "진입" },
+      { key: "amount_select",  label: "금액 선택" },
+      { key: "message_select", label: "메시지 선택" },
+      { key: "pay_click",      label: "결제 클릭" },
+      { key: "pay_success",    label: "결제 완료" },
+    ];
+
+    // 세션별 최대 도달 단계 집계
+    const sessions = {};
+    events.forEach(ev => {
+      const sid = ev.sessionId || ev.id;
+      if (!sessions[sid]) sessions[sid] = new Set();
+      sessions[sid].add(ev.event);
+    });
+
+    const counts = {};
+    STEPS.forEach(s => { counts[s.key] = 0; });
+    counts["pay_fail"]      = 0;
+    counts["custom_amount"] = 0;
+    counts["message_type"]  = 0;
+
+    events.forEach(ev => { if (counts[ev.event] !== undefined) counts[ev.event]++; });
+
+    const funnel = STEPS.map((s, i) => ({
+      step:    i + 1,
+      key:     s.key,
+      label:   s.label,
+      count:   counts[s.key],
+      dropoff: i > 0 ? counts[STEPS[i-1].key] - counts[s.key] : 0,
+      rate:    i > 0 && counts[STEPS[i-1].key] > 0
+        ? Math.round((counts[s.key] / counts[STEPS[i-1].key]) * 100)
+        : 100,
+    }));
+
+    res.json({
+      success: true,
+      funnel,
+      extras: {
+        custom_amount: counts["custom_amount"],
+        message_type:  counts["message_type"],
+        pay_fail:      counts["pay_fail"],
+      },
+      totalEvents: events.length,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   try {
     const orders = await readOrders();

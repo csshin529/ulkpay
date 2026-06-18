@@ -51,6 +51,21 @@
     const makeOrderId = () =>
       "ulk-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
 
+    // ── 퍼널 이벤트 추적 ────────────────────────────────────────────────────────
+    const SESSION_ID = (() => {
+      let sid = sessionStorage.getItem("ulk-sid");
+      if (!sid) { sid = "sid-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6); sessionStorage.setItem("ulk-sid", sid); }
+      return sid;
+    })();
+
+    const track = (event, data = {}) => {
+      fetch("/api/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, sessionId: SESSION_ID, data }),
+      }).catch(() => {}); // 실패해도 무시
+    };
+
     // ─────────────────────────────────────────────────────────────────────────
     function UlkPay() {
       const [screen,      setScreen]      = useState("main");
@@ -79,8 +94,8 @@
       useEffect(() => {
         fetch("/api/config")
           .then(r => r.json())
-          .then(d => setConfig(d))
-          .catch(() => setConfig({ mode: "manual", performanceName: "공연", performanceId: "pilot" }));
+          .then(d => { setConfig(d); track("page_enter", { mode: d.mode }); })
+          .catch(() => { setConfig({ mode: "manual", performanceName: "공연", performanceId: "pilot" }); track("page_enter"); });
       }, []);
 
       const go = (to) => {
@@ -95,9 +110,10 @@
         if (n >= 5) { setTaps(0); go("admin"); }
       };
 
-      const handleSelectPreset = (p) => { setSelected(p); setIsCustom(false); setErrorMsg(""); };
+      const handleSelectPreset = (p) => { setSelected(p); setIsCustom(false); setErrorMsg(""); track("amount_select", { label: p.label, krw: p.krw }); };
       const handleSelectCustom = () => {
         setIsCustom(true);
+        track("custom_amount");
         setTimeout(() => customRef.current?.focus(), 50);
       };
 
@@ -106,6 +122,7 @@
         if (!canPay || paying) return;
         setErrorMsg("");
         setPaying(true);
+        track("pay_click", { amount: activeKrw, label: activeLabel, mode });
 
         if (mode === "manual") {
           // ── manual: 서버에 의사 저장 후 완료 화면 ──
@@ -354,14 +371,14 @@
             {QUICK.map((m) => {
               const on = message === m;
               return (
-                <button key={m} onClick={() => setMessage(on ? "" : m)}
+                <button key={m} onClick={() => { setMessage(on ? "" : m); if (!on) track("message_select", { message: m }); }}
                   style={{ backgroundColor: on ? C.amberF : C.card, border: `1px solid ${on ? C.amber : C.border}`, borderRadius: "20px", color: on ? C.amberL : C.muted, fontSize: "12px", fontFamily: FONT, fontWeight: 400, padding: "7px 13px", cursor: "pointer", transition: "all 0.15s" }}>
                   {m}
                 </button>
               );
             })}
           </div>
-          <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="직접 입력하실 수도 있습니다."
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} onFocus={() => track("message_type")} placeholder="직접 입력하실 수도 있습니다."
             style={{ width: "100%", height: "68px", backgroundColor: C.card, border: `1px solid ${C.borderL}`, borderRadius: "12px", color: C.text, fontSize: "14px", fontFamily: FONT, fontWeight: 400, lineHeight: 1.7, padding: "12px 15px", resize: "none", outline: "none", marginBottom: "4px" }} />
           <p style={{ fontSize: "11px", color: C.hint, marginBottom: errorMsg ? "12px" : "28px" }}>메시지는 익명으로 전달됩니다.</p>
 
@@ -383,6 +400,7 @@
       const [authed,   setAuthed]   = useState(false);
       const [stats,    setStats]    = useState(null);
       const [orders,   setOrders]   = useState([]);
+      const [funnel,   setFunnel]   = useState(null);
       const [tab,      setTab]      = useState("stats");
       const [error,    setError]    = useState("");
       const [loading,  setLoading]  = useState(false);
@@ -391,14 +409,16 @@
         if (!adminKey) return;
         setLoading(true); setError("");
         try {
-          const [sRes, oRes] = await Promise.all([
+          const [sRes, oRes, fRes] = await Promise.all([
             fetch("/api/admin/stats",  { headers: { "x-admin-key": adminKey } }),
             fetch("/api/admin/orders", { headers: { "x-admin-key": adminKey } }),
+            fetch("/api/admin/funnel", { headers: { "x-admin-key": adminKey } }),
           ]);
           if (!sRes.ok) { setError("인증 실패. 관리자 키를 확인해주세요."); return; }
-          const [sData, oData] = await Promise.all([sRes.json(), oRes.json()]);
+          const [sData, oData, fData] = await Promise.all([sRes.json(), oRes.json(), fRes.json()]);
           setStats(sData);
           setOrders(oData.orders || []);
+          setFunnel(fData);
           setAuthed(true);
         } catch { setError("서버 연결 실패"); }
         finally { setLoading(false); }
@@ -420,8 +440,6 @@
         color: tab === id ? "#0C0A07" : C.muted,
         fontFamily: FONT, fontSize: "12px", fontWeight: tab === id ? 700 : 400, cursor: "pointer",
       });
-      const Btn2  = { width: "100%", padding: "15px", backgroundColor: C.amber, color: "#0C0A07", border: "none", borderRadius: "12px", fontSize: "15px", fontWeight: 700, fontFamily: FONT, cursor: "pointer" };
-      const Ghost = { ...Btn2, backgroundColor: "transparent", border: `1px solid ${C.border}`, color: C.muted, fontWeight: 400 };
 
       return (
         <div style={{ minHeight: "100vh", backgroundColor: C.bg, display: "flex", justifyContent: "center", fontFamily: FONT, color: C.text }}>
@@ -445,10 +463,49 @@
             ) : (
               <div>
                 <div style={{ display: "flex", backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: "12px", padding: "4px", marginBottom: "20px" }}>
-                  {[["stats","통계"],["list","목록"]].map(([id,lb]) => (
+                  {[["stats","통계"],["funnel","퍼널"],["list","목록"]].map(([id,lb]) => (
                     <button key={id} style={tabStyle(id)} onClick={() => setTab(id)}>{lb}</button>
                   ))}
                 </div>
+
+                {tab === "funnel" && funnel && (
+                  <div>
+                    <div style={{ fontSize: "12px", color: C.hint, marginBottom: "16px" }}>총 {funnel.totalEvents}개 이벤트 수집</div>
+                    {funnel.funnel.map((step) => {
+                      const maxCount = funnel.funnel[0].count || 1;
+                      const barW = Math.round((step.count / maxCount) * 100);
+                      return (
+                        <div key={step.key} style={{ marginBottom: "14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
+                            <span style={{ fontSize: "13px", color: C.text }}>{step.step}. {step.label}</span>
+                            <span style={{ fontSize: "13px", color: C.amberL, fontWeight: 700 }}>{step.count}명</span>
+                          </div>
+                          <div style={{ backgroundColor: C.card, borderRadius: "4px", height: "8px", overflow: "hidden" }}>
+                            <div style={{ width: `${barW}%`, height: "100%", backgroundColor: C.amber, borderRadius: "4px", transition: "width 0.5s" }} />
+                          </div>
+                          {step.step > 1 && (
+                            <div style={{ fontSize: "11px", color: step.dropoff > 0 ? "#E07070" : C.hint, marginTop: "3px" }}>
+                              {step.dropoff > 0 ? `↓ ${step.dropoff}명 이탈 (전환율 ${step.rate}%)` : `전환율 ${step.rate}%`}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: "12px", padding: "14px", marginTop: "20px" }}>
+                      <div style={{ fontSize: "11px", color: C.hint, marginBottom: "10px", letterSpacing: "0.06em" }}>추가 행동</div>
+                      {[
+                        ["직접 금액 입력 시도", funnel.extras?.custom_amount],
+                        ["메시지 직접 작성 시도", funnel.extras?.message_type],
+                        ["결제 실패", funnel.extras?.pay_fail],
+                      ].map(([l, v]) => (
+                        <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                          <span style={{ fontSize: "12px", color: C.muted }}>{l}</span>
+                          <span style={{ fontSize: "12px", color: C.amberL, fontWeight: 700 }}>{v || 0}회</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {tab === "stats" && stats && (
                   <div>
