@@ -77,7 +77,7 @@
       const [paying,      setPaying]      = useState(false);
       const [errorMsg,    setErrorMsg]    = useState("");
       const [doneOrder,   setDoneOrder]   = useState(null);   // manual mode 완료 데이터
-      const [taps,        setTaps]        = useState(0);
+      const tapCount  = useRef(0);
       const tapTimer  = useRef(null);
       const customRef = useRef(null);
       const [fade,        setFade]        = useState(true);
@@ -105,12 +105,12 @@
 
       const handleLogoTap = () => {
         clearTimeout(tapTimer.current);
-        tapTimer.current = setTimeout(() => setTaps(0), 2000);
-        setTaps((prev) => {
-          const n = prev + 1;
-          if (n >= 5) { go("admin"); return 0; }
-          return n;
-        });
+        tapCount.current += 1;
+        tapTimer.current = setTimeout(() => { tapCount.current = 0; }, 2000);
+        if (tapCount.current >= 5) {
+          tapCount.current = 0;
+          go("admin");
+        }
       };
 
       const handleSelectPreset = (p) => { setSelected(p); setIsCustom(false); setErrorMsg(""); track("amount_select", { label: p.label, krw: p.krw }); };
