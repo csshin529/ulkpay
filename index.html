@@ -105,9 +105,12 @@
 
       const handleLogoTap = () => {
         clearTimeout(tapTimer.current);
-        const n = taps + 1; setTaps(n);
         tapTimer.current = setTimeout(() => setTaps(0), 2000);
-        if (n >= 5) { setTaps(0); go("admin"); }
+        setTaps((prev) => {
+          const n = prev + 1;
+          if (n >= 5) { go("admin"); return 0; }
+          return n;
+        });
       };
 
       const handleSelectPreset = (p) => { setSelected(p); setIsCustom(false); setErrorMsg(""); track("amount_select", { label: p.label, krw: p.krw }); };
