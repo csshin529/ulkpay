@@ -95,6 +95,17 @@ function fileAppend(order) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(all, null, 2), "utf-8");
 }
 
+// ─── 날짜 범위 필터 헬퍼 (관리자 API의 from/to 쿼리 파라미터용) ──────────────────
+function filterByRange(list, from, to) {
+  if (!from && !to) return list;
+  const fromTime = from ? new Date(from).getTime() : -Infinity;
+  const toTime   = to   ? new Date(to).getTime()   : Infinity;
+  return list.filter(item => {
+    const t = new Date(item.createdAt).getTime();
+    return t >= fromTime && t <= toTime;
+  });
+}
+
 // ─── 통합 저장소 API (async) ───────────────────────────────────────────────────
 async function readOrders() {
   if (USE_SUPABASE) {
@@ -431,7 +442,7 @@ app.post("/api/event", async (req, res) => {
 // ─── API: 퍼널 통계 (관리자) ──────────────────────────────────────────────────
 app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
   try {
-    const events = await readEvents();
+    const events = filterByRange(await readEvents(), req.query.from, req.query.to);
 
     // 반드시 순서대로 거쳐야만 하는 핵심 퍼널 (항상 단조감소 — 뒤 단계가 앞 단계보다 많을 수 없음)
     const CORE_STEPS = [
@@ -485,7 +496,7 @@ app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
 });
 app.get("/api/admin/orders", requireAdmin, async (req, res) => {
   try {
-    const orders = await readOrders();
+    const orders = filterByRange(await readOrders(), req.query.from, req.query.to);
     res.json({ success: true, count: orders.length, orders });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
@@ -494,7 +505,7 @@ app.get("/api/admin/orders", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/stats", requireAdmin, async (req, res) => {
   try {
-    const orders   = await readOrders();
+    const orders   = filterByRange(await readOrders(), req.query.from, req.query.to);
     const by       = (s) => orders.filter(o => o.status === s);
     const sum      = (list) => list.reduce((a, o) => a + (o.amount || 0), 0);
     const paid     = by("paid");
@@ -519,7 +530,7 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
 
 app.get("/api/admin/export.csv", requireAdmin, async (req, res) => {
   try {
-    const orders = await readOrders();
+    const orders = filterByRange(await readOrders(), req.query.from, req.query.to);
     const header = "id,mode,status,performanceName,amount,choco,label,message,createdAt,paymentKey,orderId\n";
     const rows   = orders.map(o =>
       [
