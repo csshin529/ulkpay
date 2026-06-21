@@ -436,6 +436,9 @@
         } catch { alert("CSV 다운로드 실패"); }
       };
 
+      const Btn2 = { width: "100%", padding: "15px 20px", backgroundColor: C.amber, color: "#0C0A07", border: "none", borderRadius: "10px", fontSize: "15px", fontWeight: 700, fontFamily: FONT, cursor: "pointer", letterSpacing: "-0.01em" };
+      const Ghost = { width: "100%", padding: "15px 20px", backgroundColor: "transparent", color: C.muted, border: `1px solid ${C.borderL}`, borderRadius: "10px", fontSize: "14px", fontWeight: 500, fontFamily: FONT, cursor: "pointer" };
+
       const tabStyle = (id) => ({
         flex: 1, padding: "9px 4px", border: "none", borderRadius: "8px",
         backgroundColor: tab === id ? C.amber : "transparent",
