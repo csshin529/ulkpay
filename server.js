@@ -57,11 +57,20 @@ const sbHeaders = () => ({
 });
 
 async function sbInsert(order) {
-  await axios.post(
-    `${SB_URL}/rest/v1/orders`,
-    { id: order.id, data: order },
-    { headers: sbHeaders() }
-  );
+  try {
+    await axios.post(
+      `${SB_URL}/rest/v1/orders`,
+      { id: order.id, data: order },
+      { headers: sbHeaders() }
+    );
+  } catch (e) {
+    // 동일 id가 이미 저장돼 있음 = 웹훅/Return URL 중 한쪽이 먼저 저장한 정상 케이스
+    if (e.response?.status === 409) {
+      console.log(`ℹ️  주문 ${order.id} 이미 저장됨 — 중복 저장 스킵`);
+      return;
+    }
+    throw e;
+  }
 }
 
 async function sbReadAll() {
@@ -106,7 +115,7 @@ async function saveOrder(order) {
 // ─── 주문 객체 생성 ────────────────────────────────────────────────────────────
 function makeOrder(fields) {
   return {
-    id:              crypto.randomUUID(),
+    id:              fields.id || crypto.randomUUID(),
     mode:            fields.mode            || MODE,
     status:          fields.status          || "intent",
     performanceId:   fields.performanceId   || process.env.PERFORMANCE_ID   || "pilot",
@@ -119,6 +128,7 @@ function makeOrder(fields) {
     paymentKey:      fields.paymentKey || null,
     orderId:         fields.orderId   || null,
     userAgent:       fields.userAgent || null,
+    source:          fields.source    || null, // "webhook" | "return_url_fallback" | null
   };
 }
 
@@ -259,6 +269,7 @@ app.post("/api/webhook/weroute", express.urlencoded({ extended: true }), async (
 
   try {
     await saveOrder(makeOrder({
+      id:              body.ord_num ? `weroute-${body.ord_num}` : undefined,
       mode:            "weroute",
       status:          "paid",
       performanceId:   meta.performanceId   || process.env.PERFORMANCE_ID   || "pilot",
@@ -269,6 +280,7 @@ app.post("/api/webhook/weroute", express.urlencoded({ extended: true }), async (
       message:         meta.message || "",
       paymentKey:      body.trx_id  || null,
       orderId:         body.ord_num || null,
+      source:          "webhook",
     }));
     console.log("✅  위루트 결제 저장 완료:", body.ord_num);
     return res.status(200).send("{}");
@@ -280,8 +292,52 @@ app.post("/api/webhook/weroute", express.urlencoded({ extended: true }), async (
 
 // ─── API: 위루트 Return URL (weroute mode) ────────────────────────────────────
 // 결제창에서 완료 버튼 클릭 시 도착 (미클릭 시 미도달 — DB 저장은 Webhook 담당)
-app.get("/api/return/weroute", (req, res) => {
+app.get("/api/return/weroute", async (req, res) => {
   console.log("🔁 위루트 Return URL 도착:", req.query);
+  const q = req.query;
+
+  // 결제 성공으로 보이는 경우, 안전장치로 한 번 더 저장 시도
+  // (정식 기록은 Webhook 담당 — 동일 ord_num이면 sbInsert가 중복을 자동으로 걸러줌)
+  if (q.result_cd === "0000" && q.is_cancel !== "1" && q.ord_num) {
+    let meta = {};
+    try { meta = JSON.parse(q.temp || "{}"); } catch {}
+
+    try {
+      await saveOrder(makeOrder({
+        id:              `weroute-${q.ord_num}`,
+        mode:            "weroute",
+        status:          "paid",
+        performanceId:   meta.performanceId   || process.env.PERFORMANCE_ID   || "pilot",
+        performanceName: meta.performanceName || process.env.PERFORMANCE_NAME || "공연",
+        amount:          parseInt(q.amount, 10),
+        choco:           meta.choco   || null,
+        label:           meta.label   || null,
+        message:         meta.message || "",
+        paymentKey:      q.trx_id  || null,
+        orderId:         q.ord_num || null,
+        source:          "return_url_fallback",
+      }));
+      console.log("✅  Return URL 경유 저장 완료(또는 이미 저장됨):", q.ord_num);
+    } catch (e) {
+      // 저장 실패해도 사용자 화면 이동은 막지 않음 — 로그로만 남김
+      console.error("❌ Return URL 저장 실패:", e.message);
+    }
+
+    // 퍼널 집계용 결제완료 이벤트 — 서버가 직접 기록 (클라이언트 JS 의존 없음)
+    try {
+      await saveEvent({
+        id:        crypto.randomUUID(),
+        event:     "pay_success",
+        sessionId: q.ord_num || null,
+        data:      { amount: q.amount || null, ord_num: q.ord_num || null },
+        ua:        req.headers["user-agent"] || null,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn("⚠️  pay_success 이벤트 기록 실패:", e.message);
+    }
+  }
+
   const params = new URLSearchParams(req.query).toString();
   res.redirect(`/success?${params}`);
 });
@@ -378,13 +434,14 @@ app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
       sessions[sid].add(ev.event);
     });
 
-    const counts = {};
-    STEPS.forEach(s => { counts[s.key] = 0; });
-    counts["pay_fail"]      = 0;
-    counts["custom_amount"] = 0;
-    counts["message_type"]  = 0;
+    const sessionSets = Object.values(sessions);
+    const countUniqueSessions = (key) => sessionSets.filter(set => set.has(key)).length;
 
-    events.forEach(ev => { if (counts[ev.event] !== undefined) counts[ev.event]++; });
+    const counts = {};
+    STEPS.forEach(s => { counts[s.key] = countUniqueSessions(s.key); });
+    counts["pay_fail"]      = countUniqueSessions("pay_fail");
+    counts["custom_amount"] = countUniqueSessions("custom_amount");
+    counts["message_type"]  = countUniqueSessions("message_type");
 
     const funnel = STEPS.map((s, i) => ({
       step:    i + 1,
