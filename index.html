@@ -345,7 +345,7 @@
               <div style={{ borderTop: `1px solid ${C.borderL}`, padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px" }}>
                 <input ref={customRef} type="number" inputMode="numeric" placeholder="초콜릿 개수 입력"
                   value={customChoco} onChange={(e) => setCustomChoco(e.target.value.replace(/\D/g, ""))}
-                  style={{ flex: 1, backgroundColor: C.bg, border: `1px solid ${C.borderL}`, borderRadius: "8px", color: C.text, fontSize: "16px", fontFamily: FONT, fontWeight: 500, padding: "10px 14px", outline: "none", width: "100%" }} />
+                  style={{ flex: 1, backgroundColor: C.bg, border: `1.5px solid ${C.amber}`, borderRadius: "8px", color: C.text, fontSize: "16px", fontFamily: FONT, fontWeight: 500, padding: "10px 14px", outline: "none", width: "100%" }} />
                 <div style={{ fontSize: "15px", color: C.muted, flexShrink: 0 }}>개 = {customChoco ? fmt(customKrw) : "—"}원</div>
               </div>
             )}
@@ -379,7 +379,7 @@
             })}
           </div>
           <textarea value={message} onChange={(e) => setMessage(e.target.value)} onFocus={() => track("message_type")} placeholder="직접 입력하실 수도 있습니다."
-            style={{ width: "100%", height: "68px", backgroundColor: C.card, border: `1px solid ${C.borderL}`, borderRadius: "12px", color: C.text, fontSize: "14px", fontFamily: FONT, fontWeight: 400, lineHeight: 1.7, padding: "12px 15px", resize: "none", outline: "none", marginBottom: "4px" }} />
+            style={{ width: "100%", height: "68px", backgroundColor: C.card, border: `1.5px solid ${C.amber}`, borderRadius: "12px", color: C.text, fontSize: "14px", fontFamily: FONT, fontWeight: 400, lineHeight: 1.7, padding: "12px 15px", resize: "none", outline: "none", marginBottom: "4px" }} />
           <p style={{ fontSize: "13px", color: C.muted, marginBottom: errorMsg ? "12px" : "28px" }}>메시지는 익명으로 전달됩니다.</p>
 
           {errorMsg && (
