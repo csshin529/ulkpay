@@ -164,6 +164,7 @@
           }
           // temp 필드에 메타데이터 담아 Webhook에서 복원
           const metaJson = JSON.stringify({
+            sessionId:       SESSION_ID,
             label:           activeLabel,
             choco:           activeChoco,
             message,
@@ -497,8 +498,10 @@
                       );
                     })}
                     <div style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: "12px", padding: "14px", marginTop: "20px" }}>
-                      <div style={{ fontSize: "11px", color: C.hint, marginBottom: "10px", letterSpacing: "0.06em" }}>추가 행동</div>
+                      <div style={{ fontSize: "11px", color: C.hint, marginBottom: "10px", letterSpacing: "0.06em" }}>참여 지표 (선택 행동 · 필수 단계 아님)</div>
                       {[
+                        ["금액 직접 선택", funnel.extras?.amount_select],
+                        ["메시지 빠른 선택", funnel.extras?.message_select],
                         ["직접 금액 입력 시도", funnel.extras?.custom_amount],
                         ["메시지 직접 작성 시도", funnel.extras?.message_type],
                         ["결제 실패", funnel.extras?.pay_fail],

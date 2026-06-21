@@ -283,6 +283,21 @@ app.post("/api/webhook/weroute", express.urlencoded({ extended: true }), async (
       source:          "webhook",
     }));
     console.log("✅  위루트 결제 저장 완료:", body.ord_num);
+
+    // 퍼널 집계용 결제완료 이벤트 — 원래 세션ID로 정확히 귀속
+    try {
+      await saveEvent({
+        id:        crypto.randomUUID(),
+        event:     "pay_success",
+        sessionId: meta.sessionId || body.ord_num || null,
+        data:      { amount: body.amount || null, ord_num: body.ord_num || null },
+        ua:        null,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn("⚠️  pay_success 이벤트 기록 실패(webhook):", e.message);
+    }
+
     return res.status(200).send("{}");
   } catch (e) {
     console.error("❌ Webhook 저장 실패:", e.message);
@@ -328,7 +343,7 @@ app.get("/api/return/weroute", async (req, res) => {
       await saveEvent({
         id:        crypto.randomUUID(),
         event:     "pay_success",
-        sessionId: q.ord_num || null,
+        sessionId: meta.sessionId || q.ord_num || null,
         data:      { amount: q.amount || null, ord_num: q.ord_num || null },
         ua:        req.headers["user-agent"] || null,
         createdAt: new Date().toISOString(),
@@ -418,52 +433,52 @@ app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
   try {
     const events = await readEvents();
 
-    const STEPS = [
-      { key: "page_enter",     label: "진입" },
-      { key: "amount_select",  label: "금액 선택" },
-      { key: "message_select", label: "메시지 선택" },
-      { key: "pay_click",      label: "결제 클릭" },
-      { key: "pay_success",    label: "결제 완료" },
+    // 반드시 순서대로 거쳐야만 하는 핵심 퍼널 (항상 단조감소 — 뒤 단계가 앞 단계보다 많을 수 없음)
+    const CORE_STEPS = [
+      { key: "page_enter", label: "진입" },
+      { key: "pay_click",  label: "결제 클릭" },
+      { key: "pay_success",label: "결제 완료" },
     ];
 
-    // 세션별 최대 도달 단계 집계
+    // 세션별로 어떤 이벤트들을 거쳤는지 집합으로 집계
     const sessions = {};
     events.forEach(ev => {
       const sid = ev.sessionId || ev.id;
       if (!sessions[sid]) sessions[sid] = new Set();
       sessions[sid].add(ev.event);
     });
-
-    const sessionSets = Object.values(sessions);
+    const allSessionIds = Object.keys(sessions);
+    const sessionSets    = Object.values(sessions);
     const countUniqueSessions = (key) => sessionSets.filter(set => set.has(key)).length;
 
-    const counts = {};
-    STEPS.forEach(s => { counts[s.key] = countUniqueSessions(s.key); });
-    counts["pay_fail"]      = countUniqueSessions("pay_fail");
-    counts["custom_amount"] = countUniqueSessions("custom_amount");
-    counts["message_type"]  = countUniqueSessions("message_type");
-
-    const funnel = STEPS.map((s, i) => ({
-      step:    i + 1,
-      key:     s.key,
-      label:   s.label,
-      count:   counts[s.key],
-      dropoff: i > 0 ? counts[STEPS[i-1].key] - counts[s.key] : 0,
-      rate:    i > 0 && counts[STEPS[i-1].key] > 0
-        ? Math.round((counts[s.key] / counts[STEPS[i-1].key]) * 100)
-        : 100,
-    }));
-
-    res.json({
-      success: true,
-      funnel,
-      extras: {
-        custom_amount: counts["custom_amount"],
-        message_type:  counts["message_type"],
-        pay_fail:      counts["pay_fail"],
-      },
-      totalEvents: events.length,
+    // 핵심 퍼널: 이전 단계를 "거친 세션"만 남기며 누적 필터링 (진짜 깔때기)
+    let surviving = allSessionIds;
+    let prevCount = null;
+    const funnel = CORE_STEPS.map((s, i) => {
+      surviving = surviving.filter(sid => sessions[sid].has(s.key));
+      const count = surviving.length;
+      const step = {
+        step:    i + 1,
+        key:     s.key,
+        label:   s.label,
+        count,
+        dropoff: i > 0 ? prevCount - count : 0,
+        rate:    i > 0 && prevCount > 0 ? Math.round((count / prevCount) * 100) : 100,
+      };
+      prevCount = count;
+      return step;
     });
+
+    // 참여 지표: 필수 단계가 아닌 선택 행동들 — 독립 카운트, 깔때기에 끼워넣지 않음
+    const extras = {
+      amount_select:  countUniqueSessions("amount_select"),
+      message_select: countUniqueSessions("message_select"),
+      custom_amount:  countUniqueSessions("custom_amount"),
+      message_type:   countUniqueSessions("message_type"),
+      pay_fail:       countUniqueSessions("pay_fail"),
+    };
+
+    res.json({ success: true, funnel, extras, totalEvents: events.length });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
