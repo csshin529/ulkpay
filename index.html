@@ -164,12 +164,12 @@
           }
           // temp 필드에 메타데이터 담아 Webhook에서 복원
           const metaJson = JSON.stringify({
-            sessionId:       SESSION_ID,
-            label:           activeLabel,
-            choco:           activeChoco,
-            message,
-            performanceId:   config?.performanceId,
-            performanceName: config?.performanceName,
+            sid:   SESSION_ID,
+            label: activeLabel,
+            choco: activeChoco,
+            msg:   (message || "").slice(0, 50),
+            pid:   config?.performanceId,
+            pname: (config?.performanceName || "").slice(0, 20),
           });
           const ordNum = makeOrderId();
           const origin = window.location.origin;
