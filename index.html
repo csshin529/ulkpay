@@ -68,7 +68,8 @@
 
     // ─────────────────────────────────────────────────────────────────────────
     function UlkPay() {
-      const [screen,      setScreen]      = useState("main");
+      const isAdminUrl = window.location.pathname === "/admin";
+      const [screen,      setScreen]      = useState(isAdminUrl ? "admin" : "main");
       const [config,      setConfig]      = useState(null);   // { mode, clientKey, performanceId, performanceName }
       const [selected,    setSelected]    = useState(PRESETS[1]);
       const [isCustom,    setIsCustom]    = useState(false);
@@ -250,7 +251,7 @@
         if (paying) return "처리 중...";
         if (!canPay) return "금액을 선택해주세요";
         if (mode === "manual") return `${fmt(activeKrw)}원 응원 의사 남기기`;
-        return `${fmt(activeKrw)}원 결제하고 응원 보내기`;
+        return `${fmt(activeKrw)}원 응원 보내기`;
       };
 
       // ── Screen: Admin ──────────────────────────────────────────────────────
@@ -321,7 +322,7 @@
               return (
                 <div key={p.krw} onClick={() => handleSelectPreset(p)}
                   style={{ padding: "14px", border: `1.5px solid ${on ? C.amber : C.border}`, borderRadius: "12px", backgroundColor: on ? C.amberF : C.card, cursor: "pointer", transition: "all 0.15s", position: "relative" }}>
-                  {p.recommended && <div style={{ position: "absolute", top: "-1px", right: "-1px", backgroundColor: C.amber, color: "#0C0A07", fontSize: "9px", fontWeight: 700, padding: "2px 7px", borderRadius: "0 11px 0 6px" }}>추천</div>}
+                  {p.recommended && <div style={{ position: "absolute", top: "-1px", right: "-1px", backgroundColor: C.amber, color: "#0C0A07", fontSize: "9px", fontWeight: 700, padding: "2px 7px", borderRadius: "0 11px 0 6px" }}>인기</div>}
                   <div style={{ fontSize: "15px", fontWeight: 600, color: on ? C.amberL : C.text, marginBottom: "4px" }}>{p.label}</div>
                   <div style={{ fontSize: "13px", color: C.muted }}>{p.choco}초콜릿</div>
                   <div style={{ fontSize: "18px", fontWeight: 700, color: on ? C.amberL : C.text, marginTop: "8px", letterSpacing: "-0.02em" }}>{fmt(p.krw)}원</div>
@@ -369,7 +370,7 @@
           </div>
 
           {/* 응원 메시지 */}
-          <div style={{ ...SecLabel, color: C.text }}>응원메시지도 함께 남겨주세요 <span style={{ color: C.border, fontWeight: 400, letterSpacing: 0 }}>(선택)</span></div>
+          <div style={{ fontSize: "15px", fontWeight: 700, color: C.text, letterSpacing: "0.05em", marginBottom: "14px" }}>응원메시지도 함께 남겨주세요. 공연팀에 전달합니다. <span style={{ color: C.border, fontWeight: 400, letterSpacing: 0, fontSize: "13px" }}>(선택)</span></div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "7px", marginBottom: "10px" }}>
             {QUICK.map((m) => {
               const on = message === m;
@@ -392,7 +393,7 @@
           )}
 
           <button style={Btn} onClick={handlePay} disabled={!canPay || paying}>{btnLabel()}</button>
-          <p style={{ fontSize: "13px", color: C.muted, textAlign: "center", marginTop: "12px" }}>응원금은 공연팀에게 응원 메시지와 함께 전달됩니다.</p>
+
         </div></div></div>
       );
     }

@@ -553,6 +553,7 @@ app.get("/api/admin/export.csv", requireAdmin, async (req, res) => {
 // ─── HTML 라우트 ───────────────────────────────────────────────────────────────
 app.get("/success", (req, res) => res.sendFile(path.join(__dirname, "success.html")));
 app.get("/fail",    (req, res) => res.sendFile(path.join(__dirname, "fail.html")));
+app.get("/admin",   (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 
 // ─── 서버 시작 ─────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
