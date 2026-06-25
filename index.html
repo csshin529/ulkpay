@@ -95,8 +95,8 @@
       useEffect(() => {
         fetch("/api/config")
           .then(r => r.json())
-          .then(d => { setConfig(d); track("page_enter", { mode: d.mode }); })
-          .catch(() => { setConfig({ mode: "manual", performanceName: "공연", performanceId: "pilot" }); track("page_enter"); });
+          .then(d => { setConfig(d); if (!isAdminUrl) track("page_enter", { mode: d.mode }); })
+          .catch(() => { setConfig({ mode: "manual", performanceName: "공연", performanceId: "pilot" }); if (!isAdminUrl) track("page_enter"); });
       }, []);
 
       const go = (to) => {
