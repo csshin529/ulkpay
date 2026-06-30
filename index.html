@@ -89,7 +89,8 @@
       const activeLabel = isCustom
         ? `직접입력 ${customChoco}초콜릿`
         : `${selected.label} · ${selected.choco}초콜릿`;
-      const canPay = isCustom ? parseInt(customChoco || "0", 10) * 100 >= 1000 : true;
+      const configReady = !!config && (config.mode === "manual" || (config.mode === "weroute" && !!config.mid) || (config.mode !== "weroute" && config.mode !== "manual" && !!config.clientKey));
+      const canPay = configReady && (isCustom ? parseInt(customChoco || "0", 10) * 100 >= 1000 : true);
       const mode   = config?.mode || "manual";
 
       useEffect(() => {
@@ -126,9 +127,9 @@
         if (!canPay || paying) return;
         setErrorMsg("");
         setPaying(true);
-        track("pay_click", { amount: activeKrw, label: activeLabel, mode });
 
         if (mode === "manual") {
+          track("pay_click", { amount: activeKrw, label: activeLabel, mode });
           // ── manual: 서버에 의사 저장 후 완료 화면 ──
           try {
             const res = await fetch("/api/intent", {
@@ -158,6 +159,7 @@
 
         } else if (mode === "weroute") {
           // ── weroute: 위루트 Form POST 결제창 호출 ──
+          track("pay_click", { amount: activeKrw, label: activeLabel, mode });
           if (!config?.mid) {
             setErrorMsg("결제 설정을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
             setPaying(false);
@@ -203,6 +205,7 @@
 
         } else {
           // ── toss: 토스페이먼츠 결제창 호출 ──
+          track("pay_click", { amount: activeKrw, label: activeLabel, mode });
           if (!config?.clientKey) {
             setErrorMsg("결제 설정을 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
             setPaying(false);
@@ -249,6 +252,7 @@
 
       const btnLabel = () => {
         if (paying) return "처리 중...";
+        if (!configReady) return "결제 준비 중...";
         if (!canPay) return "금액을 선택해주세요";
         if (mode === "manual") return `${fmt(activeKrw)}원 응원 의사 남기기`;
         return `${fmt(activeKrw)}원 응원 보내기`;
