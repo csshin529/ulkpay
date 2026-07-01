@@ -368,7 +368,7 @@
               {/* 금액 선택 */}
               <div style={{ padding: "0 20px", marginBottom: "24px" }}>
                 <div style={{ fontSize: "13px", fontWeight: 600, color: L.accent, letterSpacing: "0.06em", marginBottom: "6px" }}>마음을 담아</div>
-                <div style={{ fontSize: "12px", color: L.hint, marginBottom: "14px" }}>🍫 초콜릿 1개 = 100원</div>
+                <div style={{ fontSize: "14px", color: L.muted, marginBottom: "14px" }}>🍫 초콜릿 1개 = 100원</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px" }}>
                   {PRESETS.map((p) => {
                     const on = !isCustom && selected.krw === p.krw;
@@ -377,7 +377,7 @@
                         style={{ padding: "14px 16px", border: `1.5px solid ${on ? L.accent : L.border}`, borderRadius: "12px", backgroundColor: on ? L.accentF : L.card, cursor: "pointer", transition: "all 0.15s", position: "relative", textAlign: "center" }}>
                         {p.recommended && <div style={{ position: "absolute", top: "-1px", right: "-1px", backgroundColor: L.accent, color: "#FFF", fontSize: "9px", fontWeight: 700, padding: "2px 8px", borderRadius: "0 11px 0 6px" }}>인기</div>}
                         <div style={{ fontSize: "20px", fontWeight: 700, color: on ? L.accent : L.text, letterSpacing: "-0.02em" }}>{fmt(p.krw)}원</div>
-                        <div style={{ fontSize: "11px", color: L.hint, marginTop: "3px" }}>{p.choco}</div>
+                        <div style={{ fontSize: "13px", color: L.muted, marginTop: "3px" }}>{p.choco}</div>
                       </div>
                     );
                   })}
@@ -392,11 +392,11 @@
                       value={customAmt}
                       onFocus={handleCustomFocus}
                       onChange={handleCustomChange}
-                      style={{ flex: 1, minWidth: 0, backgroundColor: "transparent", border: "none", borderBottom: `2px solid ${isCustom ? L.accent : L.border}`, color: L.text, fontSize: isCustom ? "22px" : "14px", fontFamily: FONT, fontWeight: isCustom ? 700 : 400, padding: "4px 0", outline: "none", transition: "all 0.15s" }} />
+                      style={{ flex: 1, minWidth: 0, backgroundColor: "transparent", border: "none", borderBottom: `2px solid ${isCustom ? L.accent : L.border}`, color: L.text, fontSize: isCustom ? "22px" : "12px", fontFamily: FONT, fontWeight: isCustom ? 700 : 400, padding: "4px 0", outline: "none", transition: "all 0.15s" }} />
                     <span style={{ fontSize: "16px", color: L.muted, flexShrink: 0 }}>원</span>
                   </div>
                   {isCustom && customKrw >= 100 && (
-                    <div style={{ fontSize: "12px", color: L.hint, marginTop: "6px" }}>{customChoco}</div>
+                    <div style={{ fontSize: "13px", color: L.muted, marginTop: "6px" }}>{customChoco}</div>
                   )}
                 </div>
               </div>

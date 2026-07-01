@@ -321,13 +321,12 @@ app.post("/api/webhook/weroute", express.urlencoded({ extended: true }), async (
 app.get("/api/return/weroute", async (req, res) => {
   console.log("🔁 위루트 Return URL 도착:", req.query);
   const q = req.query;
+  let meta = {};
+  try { meta = JSON.parse(q.temp || "{}"); } catch {}
 
   // 결제 성공으로 보이는 경우, 안전장치로 한 번 더 저장 시도
   // (정식 기록은 Webhook 담당 — 동일 ord_num이면 sbInsert가 중복을 자동으로 걸러줌)
   if (q.result_cd === "0000" && q.is_cancel !== "1" && q.ord_num) {
-    let meta = {};
-    try { meta = JSON.parse(q.temp || "{}"); } catch {}
-
     try {
       await saveOrder(makeOrder({
         id:              `weroute-${q.ord_num}`,
