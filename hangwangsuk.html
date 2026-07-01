@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <title>한광숙 개인전 · 울컥</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
   <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
@@ -137,8 +137,19 @@
 
       const customKrw = parseInt(customAmt || "0", 10);
       const activeKrw = isCustom ? customKrw : selected.krw;
+      const customChoco = customKrw > 0 ? `초콜릿 ${customKrw / 100}개` : "";
       const activeLabel = isCustom ? `직접입력 ${fmt(customKrw)}원` : `${fmt(selected.krw)}원`;
+      const activeChoco = isCustom ? customChoco : selected.choco;
       const canPay = configReady && (isCustom ? customKrw >= 1000 : true);
+
+      // URL 파라미터로 결제 완료 감지 (위루트 Return URL → /success/hks?...)
+      useEffect(() => {
+        const q = new URLSearchParams(window.location.search);
+        if (q.get("result_cd") === "0000" && q.get("is_cancel") !== "1") {
+          setDoneAmt(parseInt(q.get("amount") || "0", 10));
+          setScreen("done");
+        }
+      }, []);
 
       const handleSelectPreset = (p) => {
         setSelected(p); setIsCustom(false); setErrorMsg("");
@@ -381,9 +392,12 @@
                       value={customAmt}
                       onFocus={handleCustomFocus}
                       onChange={handleCustomChange}
-                      style={{ flex: 1, backgroundColor: "transparent", border: "none", borderBottom: `2px solid ${isCustom ? L.accent : L.border}`, color: L.text, fontSize: isCustom ? "22px" : "14px", fontFamily: FONT, fontWeight: isCustom ? 700 : 400, padding: "4px 0", outline: "none", transition: "all 0.15s" }} />
+                      style={{ flex: 1, minWidth: 0, backgroundColor: "transparent", border: "none", borderBottom: `2px solid ${isCustom ? L.accent : L.border}`, color: L.text, fontSize: isCustom ? "22px" : "14px", fontFamily: FONT, fontWeight: isCustom ? 700 : 400, padding: "4px 0", outline: "none", transition: "all 0.15s" }} />
                     <span style={{ fontSize: "16px", color: L.muted, flexShrink: 0 }}>원</span>
                   </div>
+                  {isCustom && customKrw >= 100 && (
+                    <div style={{ fontSize: "12px", color: L.hint, marginTop: "6px" }}>{customChoco}</div>
+                  )}
                 </div>
               </div>
 
@@ -401,7 +415,7 @@
                 <div style={{ margin: "0 20px 16px", backgroundColor: L.cardSoft, border: `1px solid ${L.border}`, borderRadius: "12px", padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontSize: "12px", color: L.hint, marginBottom: "2px" }}>{anonymous ? "익명으로" : "이름 없이"} 전달</div>
-                    <div style={{ fontSize: "13px", color: L.muted }}>{activeLabel}</div>
+                    <div style={{ fontSize: "13px", color: L.muted }}>{activeLabel} · {activeChoco}</div>
                   </div>
                   <div style={{ fontSize: "21px", fontWeight: 700, color: L.accent, letterSpacing: "-0.02em" }}>{fmt(activeKrw)}원</div>
                 </div>

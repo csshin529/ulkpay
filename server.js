@@ -365,7 +365,13 @@ app.get("/api/return/weroute", async (req, res) => {
   }
 
   const params = new URLSearchParams(req.query).toString();
-  res.redirect(`/success?${params}`);
+  // 이벤트 ID에 따라 완료 화면 분기
+  const pid = meta.pid || "";
+  if (pid.startsWith("hangwangsuk")) {
+    res.redirect(`/success/hks?${params}`);
+  } else {
+    res.redirect(`/success?${params}`);
+  }
 });
 
 // ─── 이벤트 로그 저장소 ───────────────────────────────────────────────────────
@@ -551,7 +557,8 @@ app.get("/api/admin/export.csv", requireAdmin, async (req, res) => {
 });
 
 // ─── HTML 라우트 ───────────────────────────────────────────────────────────────
-app.get("/success", (req, res) => res.sendFile(path.join(__dirname, "success.html")));
+app.get("/success",     (req, res) => res.sendFile(path.join(__dirname, "success.html")));
+app.get("/success/hks", (req, res) => res.sendFile(path.join(__dirname, "hangwangsuk.html")));
 app.get("/fail",    (req, res) => res.sendFile(path.join(__dirname, "fail.html")));
 app.get("/admin",   (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/hks", (req, res) => res.sendFile(path.join(__dirname, "hangwangsuk.html")));
