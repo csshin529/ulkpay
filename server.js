@@ -554,6 +554,8 @@ app.get("/api/admin/export.csv", requireAdmin, async (req, res) => {
 app.get("/success", (req, res) => res.sendFile(path.join(__dirname, "success.html")));
 app.get("/fail",    (req, res) => res.sendFile(path.join(__dirname, "fail.html")));
 app.get("/admin",   (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/hks", (req, res) => res.sendFile(path.join(__dirname, "hangwangsuk.html")));
+app.get("/e/:eventId", (req, res) => res.sendFile(path.join(__dirname, "hangwangsuk.html"))); // 향후 확장용
 
 // ─── 서버 시작 ─────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
